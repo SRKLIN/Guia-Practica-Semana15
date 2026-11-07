@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cliente TaskBoard</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #F5F8FC;
+            color: #13233D;
+            max-width: 700px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+        }
+        h1 { color: #0B2E59; font-size: 1.4rem; }
+        input, button { font: inherit; padding: 0.35rem 0.6rem; }
+        button { cursor: pointer; }
+        #estado { color: #5B6B85; }
+        #estado.error { color: #C23B32; font-weight: bold; }
+        ul { list-style: none; padding: 0; }
+        li {
+            background: #fff;
+            border: 1px solid #D7E1EF;
+            border-radius: 8px;
+            padding: 0.7rem 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .conteo {
+            background: #1E7E52;
+            color: #fff;
+            border-radius: 999px;
+            padding: 0.1rem 0.6rem;
+            font-size: 0.78rem;
+            margin-left: 0.4rem;
+        }
+        .oculto { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Tienda en línea · Mis comercios en TaskBoard</h1>
+
+    <form id="login">
+        <input id="email" type="email" value="ana@taskboard.test">
+        <input id="password" type="password" value="password123">
+        <button type="submit">Entrar</button>
+    </form>
+
+    <p>
+        <button id="salir" class="oculto">Salir</button>
+    </p>
+
+    <p id="estado"></p>
+    <ul id="lista"></ul>
+
+<script>
+    // Misma dirección que la página, así que no hay problema de CORS
+    const base = '/api';
+
+    // En memoria: se pierde al recargar. En localStorage quedaría
+    // expuesto a cualquier script que se cuele en la página.
+    let token = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    function mensaje(texto, esError = false) {
+        $('estado').textContent = texto;
+        $('estado').classList.toggle('error', esError);
+    }
+
+    // Vuelve al formulario: se usa al salir y en cualquier 401
+    function cerrarSesionLocal(texto) {
+        token = null;
+        $('login').classList.remove('oculto');
+        $('salir').classList.add('oculto');
+        $('lista').replaceChildren();
+        mensaje(texto, true);
+    }
+
+    $('login').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const r = await fetch(base + '/login', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: $('email').value,
+                password: $('password').value,
+                dispositivo: 'cliente-web',
+            }),
+        });
+
+        if (r.status === 429) {
+            mensaje('Demasiados intentos. Espera un minuto.', true);
+            return;
+        }
+
+        if (r.status !== 201) {
+            mensaje('Credenciales incorrectas (' + r.status + ')', true);
+            return;
+        }
+
+        token = (await r.json()).token;
+        $('login').classList.add('oculto');
+        $('salir').classList.remove('oculto');
+        cargarComercios();
+    });
+
+    $('salir').addEventListener('click', async () => {
+        await fetch(base + '/logout', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer ' + token,
+            },
+        });
+        cerrarSesionLocal('Sesión cerrada. El token quedó revocado.');
+    });
+
+    // Pide dos cosas a la API y las junta: los comercios y los cobros
+    // completados, para contar cuántos lleva cada comercio.
+    async function cargarComercios() {
+        const cabeceras = {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer ' + token,
+        };
+
+        const [rComercios, rCompletadas] = await Promise.all([
+            fetch(base + '/comercios', { headers: cabeceras }),
+            fetch(base + '/transacciones?estado=Completada', { headers: cabeceras }),
+        ]);
+
+        // Un buen cliente mira el código antes de usar los datos
+        if (rComercios.status === 401 || rCompletadas.status === 401) {
+            cerrarSesionLocal('Sesión vencida: vuelve a entrar.');
+            return;
+        }
+
+        const { data: comercios } = await rComercios.json();
+        const { data: completadas } = await rCompletadas.json();
+
+        const porComercio = {};
+        completadas.forEach(t => {
+            porComercio[t.comercio_id] = (porComercio[t.comercio_id] ?? 0) + 1;
+        });
+
+        const lista = $('lista');
+        lista.replaceChildren();
+
+        comercios.forEach(c => {
+            const li = document.createElement('li');
+            // textContent, no innerHTML: si un nombre trajera HTML,
+            // se mostraría como texto en vez de ejecutarse
+            li.textContent = c.nombre + ' · ' + (c.rubro ?? 'Sin rubro');
+
+            const badge = document.createElement('span');
+            badge.className = 'conteo';
+            badge.textContent = (porComercio[c.id] ?? 0) + ' completadas';
+            li.appendChild(badge);
+
+            lista.appendChild(li);
+        });
+
+        mensaje(comercios.length + ' comercio(s)');
+    }
+</script>
+
+</body>
+</html>

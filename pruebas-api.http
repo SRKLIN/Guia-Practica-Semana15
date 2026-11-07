@@ -1,0 +1,65 @@
+### Colección de pruebas de la API — TaskBoard
+### Las mismas 8 peticiones de la tabla de verificación, más el reto.
+### Requiere el servidor corriendo: php artisan serve
+
+@host = http://127.0.0.1:8000/api
+
+### 1. Listar comercios (200, sin user_id ni fechas)
+GET {{host}}/comercios
+Accept: application/json
+
+### 2. Un comercio con sus transacciones (200)
+GET {{host}}/comercios/1
+Accept: application/json
+
+### 3. Comercio inexistente (404 en JSON)
+GET {{host}}/comercios/999
+Accept: application/json
+
+### 4. Listar transacciones (200)
+GET {{host}}/transacciones
+Accept: application/json
+
+### 5. Crear con datos válidos (201)
+POST {{host}}/transacciones
+Accept: application/json
+Content-Type: application/json
+
+{
+  "comercio_id": 1,
+  "cliente_nombre": "Luis Mena",
+  "monto": 25.50,
+  "estado": "Completada"
+}
+
+### 6. Crear con datos inválidos (422 + errors)
+POST {{host}}/transacciones
+Accept: application/json
+Content-Type: application/json
+
+{
+  "comercio_id": 1,
+  "monto": -5
+}
+
+### 7. Eliminar la transacción creada (204 sin cuerpo).
+### Cambia el 4 por el id que te devolvió la petición 5.
+DELETE {{host}}/transacciones/4
+Accept: application/json
+
+### 8. El mismo POST inválido SIN Accept (302, no JSON)
+POST {{host}}/transacciones
+Content-Type: application/json
+
+{
+  "comercio_id": 1,
+  "monto": -5
+}
+
+### 9. Reto: filtrar por estado (200, solo las Completada)
+GET {{host}}/transacciones?estado=Completada
+Accept: application/json
+
+### 10. Reto: filtro sin coincidencias (200 con "data": [])
+GET {{host}}/transacciones?estado=Cancelada
+Accept: application/json
